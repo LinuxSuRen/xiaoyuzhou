@@ -18,7 +18,7 @@ import { Logger } from '../services/logger';
  */
 export enum StrategyMode {
   AUTO = 'auto',           // Automatically choose best adapter
-  PLAYWRIGHT = 'playwright', // Prefer Playwright
+  PLAYWRIGHT = 'playwright', // Prefer Playwright (default recommended)
   HTTP = 'http',           // Prefer HTTP
   PLAYWRIGHT_ONLY = 'playwright-only', // Only use Playwright
   HTTP_ONLY = 'http-only'  // Only use HTTP
@@ -138,8 +138,8 @@ export class StrategyEngine {
 
       case StrategyMode.AUTO:
       default:
-        // Prefer HTTP for performance, fall back to Playwright
-        candidateTypes = [AdapterType.HTTP, AdapterType.PLAYWRIGHT];
+        // Prefer Playwright for compatibility, fall back to HTTP
+        candidateTypes = [AdapterType.PLAYWRIGHT, AdapterType.HTTP];
         break;
     }
 

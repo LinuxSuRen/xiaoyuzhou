@@ -304,43 +304,120 @@ export class PlaywrightAdapter extends BaseAdapter {
       const page = await this.getPage();
 
       // Navigate to creator dashboard
-      await this.navigateTo('/dashboard');
-
-      // Wait for shows to load
-      await this.waitForSelector('[class*="podcast"], [class*="show"], [class*="episode"]', 10000);
-
-      // Extract shows from page
-      const shows = await page.evaluate(() => {
-        const elements = document.querySelectorAll('[class*="podcast"], [class*="show"]');
-        const result: Show[] = [];
-
-        elements.forEach((el, index) => {
-          const titleEl = el.querySelector('[class*="title"], h2, h3');
-          const descEl = el.querySelector('[class*="description"], p');
-          const linkEl = el.querySelector('a');
-
-          if (titleEl && titleEl.textContent) {
-            const href = linkEl?.getAttribute('href') || '';
-            const idMatch = href.match(/\/podcasts\/([^\/]+)/);
-
-            result.push({
-              id: idMatch?.[1] || `show_${index}`,
-              title: titleEl.textContent.trim(),
-              description: descEl?.textContent?.trim() || '',
-              episodeCount: 0,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            });
-          }
-        });
-
-        return result;
-      });
-
-      this.logger.info(`Found ${shows.length} shows`, {
+      this.logger.info('Navigating to dashboard', {
         module: 'playwright-adapter',
         action: 'getShows'
       });
+
+      await page.goto('https://podcaster.xiaoyuzhoufm.com/dashboard', { waitUntil: 'networkidle', timeout: this.timeout });
+
+      // Wait for page to fully load
+      await page.waitForLoadState('domcontentloaded', { timeout: this.timeout });
+
+      // Wait longer for dynamic content to load
+      await page.waitForTimeout(3000);
+
+      // Take screenshot in debug mode
+      if (this.debug && this.debugger) {
+        const screenshotPath = await this.debugger.saveScreenshot('dashboard', page);
+        this.logger.debug(`Screenshot saved: ${screenshotPath}`, {
+          module: 'playwright-adapter',
+          action: 'getShows'
+        });
+      }
+
+      // Extract shows from page - try multiple selector patterns
+      const shows = await page.evaluate(() => {
+        const result: Array<{ id: string; title: string; description: string; episodeCount: number; createdAt: string; updatedAt: string }> = [];
+
+        // Try different possible selectors for show cards/items
+        const possibleSelectors = [
+          '[class*="podcast"]',
+          '[class*="show"]',
+          '[class*="card"]',
+          'a[href*="/podcasts/"]',
+          '[data-podcast]',
+          'a[href*="/podcast/"]',
+          '[class*="list"]',
+          '[class*="item"]'
+        ];
+
+        // Log page HTML for debugging
+        console.log('Page HTML:', document.body.innerHTML.substring(0, 5000));
+
+        for (const selector of possibleSelectors) {
+          const elements = document.querySelectorAll(selector);
+          console.log(`Selector "${selector}": found ${elements.length} elements`);
+
+          if (elements.length > 0) {
+            elements.forEach((el: any, index) => {
+              // Try to find title - try many selectors
+              const titleSelectors = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', '[class*="title"]', '[class*="name"]', '[class*="header"]', 'strong'];
+              let titleEl = null;
+              for (const titleSel of titleSelectors) {
+                titleEl = el.querySelector(titleSel);
+                if (titleEl?.textContent) break;
+              }
+
+              // Try to find description
+              const descSelectors = ['p', '[class*="description"]', '[class*="desc"]', 'span', 'div[class*="content"]', '[class*="summary"]'];
+              let descEl = null;
+              for (const descSel of descSelectors) {
+                descEl = el.querySelector(descSel);
+                if (descEl?.textContent && descEl.textContent.length > 0) break;
+              }
+
+              // Try to find link and extract ID
+              const linkEl = el.querySelector('a[href]') || el;
+              const href = linkEl?.getAttribute('href') || linkEl?.getAttribute('data-id') || el.getAttribute('id') || '';
+
+              // Try multiple ID extraction patterns
+              let id = href;
+              const idPatterns = [
+                /\/podcasts\/([^\/\?#]+)/,
+                /\/podcast\/([^\/\?#]+)/,
+                /\/show\/([^\/\?#]+)/,
+                /id=([a-zA-Z0-9-]+)/
+              ];
+
+              for (const pattern of idPatterns) {
+                const match = href.match(pattern);
+                if (match) {
+                  id = match[1];
+                  break;
+                }
+              }
+
+              if (titleEl?.textContent) {
+                result.push({
+                  id: id || `show_${index}`,
+                  title: titleEl.textContent.trim(),
+                  description: descEl?.textContent?.trim().substring(0, 200) || '',
+                  episodeCount: 0,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                });
+              }
+            });
+            break;
+          }
+        }
+
+        console.log(`Total shows extracted: ${result.length}`);
+        return result;
+      });
+
+      if (shows.length === 0) {
+        this.logger.warn('No shows found on dashboard', {
+          module: 'playwright-adapter',
+          action: 'getShows'
+        });
+      } else {
+        this.logger.info(`Found ${shows.length} shows`, {
+          module: 'playwright-adapter',
+          action: 'getShows'
+        });
+      }
 
       return this.success(shows);
 

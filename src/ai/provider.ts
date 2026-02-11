@@ -13,6 +13,7 @@ export enum AIProvider {
   OPENAI = 'openai',
   CLAUDE = 'claude',
   GEMINI = 'gemini',
+  SILICONFLOW = 'siliconflow',
   CUSTOM = 'custom'
 }
 

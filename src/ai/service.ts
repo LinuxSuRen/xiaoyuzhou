@@ -4,6 +4,7 @@
 
 import { IAIProvider, AIProvider as AIProviderType, AIConfig, AIMessage, AIRole, AICompletionOptions, DEFAULT_AI_CONFIG } from './provider';
 import { OpenAIProvider } from './openai.provider';
+import { SiliconFlowProvider } from './siliconflow.provider';
 import { Logger } from '../services/logger';
 
 // =====================================================
@@ -101,6 +102,10 @@ export class AIService {
       switch (providerType as AIProviderType) {
         case AIProviderType.OPENAI:
           provider = new OpenAIProvider(providerConfig);
+          break;
+
+        case AIProviderType.SILICONFLOW:
+          provider = new SiliconFlowProvider(providerConfig);
           break;
 
         // Add other providers here

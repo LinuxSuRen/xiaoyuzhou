@@ -92,7 +92,7 @@ export class XiaoYuzhouClient {
       this.playwrightAdapter,
       this.httpAdapter,
       {
-        mode: config.strategyMode || StrategyMode.AUTO
+        mode: config.strategyMode || StrategyMode.PLAYWRIGHT
       },
       this.logger
     );
