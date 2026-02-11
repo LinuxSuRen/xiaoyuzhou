@@ -41,7 +41,7 @@ export class PlaywrightAdapter extends BaseAdapter {
   }
 
   /**
-   * Initialize the adapter
+   * Initialize adapter
    */
   async initialize(): Promise<void> {
     try {
@@ -171,122 +171,6 @@ export class PlaywrightAdapter extends BaseAdapter {
     }
   }
 
-  /**
-   * Navigate to URL
-   */
-  private async navigateTo(path: string): Promise<void> {
-    const page = await this.getPage();
-    const url = `${this.BASE_URL}${path}`;
-
-    this.logger.debug(`Navigating to: ${url}`, {
-      module: 'playwright-adapter',
-      action: 'navigate'
-    });
-
-    await page.goto(url, { waitUntil: 'networkidle', timeout: this.timeout });
-  }
-
-  /**
-   * Wait for selector and return element
-   */
-  private async waitForSelector(selector: string, timeout?: number): Promise<void> {
-    const page = await this.getPage();
-    await page.waitForSelector(selector, { timeout: timeout || this.timeout });
-  }
-
-  /**
-   * Extract token from localStorage or cookies
-   */
-  async extractToken(): Promise<string | null> {
-    try {
-      const page = await this.getPage();
-
-      // Try to get token from localStorage
-      const token = await page.evaluate(() => {
-        // Check common token keys
-        const keys = ['token', 'authToken', 'access_token', 'jwt'];
-        for (const key of keys) {
-          const value = localStorage.getItem(key);
-          if (value) {
-            return value;
-          }
-        }
-
-        // Try from sessionStorage
-        for (const key of keys) {
-          const value = sessionStorage.getItem(key);
-          if (value) {
-            return value;
-          }
-        }
-
-        return null;
-      });
-
-      if (token) {
-        this.logger.info('Token extracted from storage', {
-          module: 'playwright-adapter',
-          action: 'extractToken'
-        });
-        return token;
-      }
-
-      // Try to get from cookies
-      const cookies = await this.context!.cookies();
-      const tokenCookie = cookies.find(c =>
-        c.name.includes('token') ||
-        c.name.includes('auth') ||
-        c.name.includes('session')
-      );
-
-      if (tokenCookie?.value) {
-        this.logger.info('Token extracted from cookie', {
-          module: 'playwright-adapter',
-          action: 'extractToken'
-        });
-        return tokenCookie.value;
-      }
-
-      this.logger.warn('Could not extract token', {
-        module: 'playwright-adapter',
-        action: 'extractToken'
-      });
-
-      return null;
-
-    } catch (error) {
-      this.logger.error('Error extracting token', error as Error, {
-        module: 'playwright-adapter',
-        action: 'extractToken'
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Set token in browser storage
-   */
-  async setTokenInBrowser(token: string): Promise<void> {
-    try {
-      const page = await this.getPage();
-
-      await page.evaluate((t) => {
-        localStorage.setItem('token', t);
-      }, token);
-
-      this.logger.debug('Token set in browser', {
-        module: 'playwright-adapter',
-        action: 'setTokenInBrowser'
-      });
-
-    } catch (error) {
-      this.logger.error('Error setting token in browser', error as Error, {
-        module: 'playwright-adapter',
-        action: 'setTokenInBrowser'
-      });
-    }
-  }
-
   // =====================================================
   // API Methods
   // =====================================================
@@ -314,8 +198,13 @@ export class PlaywrightAdapter extends BaseAdapter {
       // Wait for page to fully load
       await page.waitForLoadState('domcontentloaded', { timeout: this.timeout });
 
-      // Wait longer for dynamic content to load
-      await page.waitForTimeout(3000);
+      // Wait for initial content and scroll to load more
+      await page.waitForTimeout(5000);
+
+      this.logger.debug('Page loaded, starting show extraction', {
+        module: 'playwright-adapter',
+        action: 'getShows'
+      });
 
       // Take screenshot in debug mode
       if (this.debug && this.debugger) {
@@ -326,28 +215,21 @@ export class PlaywrightAdapter extends BaseAdapter {
         });
       }
 
-      // Extract shows from page - try multiple selector patterns
-      const shows = await page.evaluate(() => {
-        const result: Array<{ id: string; title: string; description: string; episodeCount: number; createdAt: string; updatedAt: string }> = [];
+      // Extract shows with scrolling to handle pagination
+      const shows: Show[] = [];
+      let lastCount = 0;
+      let noNewItemsCount = 0;
+      const maxScrollAttempts = 5;
 
-        // Try different possible selectors for show cards/items
-        const possibleSelectors = [
-          '[class*="podcast"]',
-          '[class*="show"]',
-          '[class*="card"]',
-          'a[href*="/podcasts/"]',
-          '[data-podcast]',
-          'a[href*="/podcast/"]',
-          '[class*="list"]',
-          '[class*="item"]'
-        ];
+      for (let scrollAttempt = 0; scrollAttempt < maxScrollAttempts; scrollAttempt++) {
+        // Get current show elements from the page
+        const currentShows = await page.evaluate(() => {
+          const result: Array<{ id: string; title: string; description: string; episodeCount: number; createdAt: string; updatedAt: string }> = [];
 
-        // Log page HTML for debugging
-        console.log('Page HTML:', document.body.innerHTML.substring(0, 5000));
+          // Try to find show cards - look for links containing /podcasts/ and /home
+          const elements = document.querySelectorAll('a[href*="/podcasts/"], a[href*="/podcast/"], a[href*="/home"]');
 
-        for (const selector of possibleSelectors) {
-          const elements = document.querySelectorAll(selector);
-          console.log(`Selector "${selector}": found ${elements.length} elements`);
+          console.log(`Found ${elements.length} potential show elements`);
 
           if (elements.length > 0) {
             elements.forEach((el: any, index) => {
@@ -369,12 +251,13 @@ export class PlaywrightAdapter extends BaseAdapter {
 
               // Try to find link and extract ID
               const linkEl = el.querySelector('a[href]') || el;
-              const href = linkEl?.getAttribute('href') || linkEl?.getAttribute('data-id') || el.getAttribute('id') || '';
+              const href = linkEl?.getAttribute('href') || '';
 
-              // Try multiple ID extraction patterns
+              // Extract ID from URL - support both /podcasts/xxx and /podcasts/xxx/home patterns
               let id = href;
               const idPatterns = [
-                /\/podcasts\/([^\/\?#]+)/,
+                /\/podcasts\/([^\/\?\/]+)/,
+                /\/podcasts\/([^\/\?\/]+)\/home/,
                 /\/podcast\/([^\/\?#]+)/,
                 /\/show\/([^\/\?#]+)/,
                 /id=([a-zA-Z0-9-]+)/
@@ -388,9 +271,10 @@ export class PlaywrightAdapter extends BaseAdapter {
                 }
               }
 
-              if (titleEl?.textContent) {
+              // Only add if we found a valid ID (link exists and ID was extracted)
+              if (titleEl?.textContent && id) {
                 result.push({
-                  id: id || `show_${index}`,
+                  id: id,
                   title: titleEl.textContent.trim(),
                   description: descEl?.textContent?.trim().substring(0, 200) || '',
                   episodeCount: 0,
@@ -399,27 +283,51 @@ export class PlaywrightAdapter extends BaseAdapter {
                 });
               }
             });
-            break;
           }
+
+          return result;
+        });
+
+        // Check if we got new items
+        if (currentShows.length === lastCount) {
+          noNewItemsCount++;
+
+          if (noNewItemsCount >= 2) {
+            this.logger.debug(`No new items found after ${scrollAttempt + 1} scrolls`, {
+              module: 'playwright-adapter',
+              action: 'getShows'
+            });
+            break; // No more items likely loaded
+          }
+
+          // Scroll down to load more content
+          const scrollHeight = await page.evaluate(() => window.innerHeight);
+          await page.evaluate((height: number) => window.scrollBy(0, height));
+
+          // Wait for content to load after scrolling
+          await page.waitForTimeout(1500);
+
+          lastCount = currentShows.length;
         }
 
-        console.log(`Total shows extracted: ${result.length}`);
-        return result;
-      });
+        // Merge all unique shows by ID
+        const uniqueShows = shows.filter((show, index, self) =>
+          index === shows.findIndex(s => s.id === show.id)
+        );
 
-      if (shows.length === 0) {
-        this.logger.warn('No shows found on dashboard', {
-          module: 'playwright-adapter',
-          action: 'getShows'
-        });
-      } else {
-        this.logger.info(`Found ${shows.length} shows`, {
-          module: 'playwright-adapter',
-          action: 'getShows'
-        });
-      }
+        if (uniqueShows.length === 0) {
+          this.logger.warn('No shows found on dashboard', {
+            module: 'playwright-adapter',
+            action: 'getShows'
+          });
+        } else {
+          this.logger.info(`Found ${uniqueShows.length} shows`, {
+            module: 'playwright-adapter',
+            action: 'getShows'
+          });
+        }
 
-      return this.success(shows);
+        return this.success(uniqueShows);
 
     } catch (error) {
       return this.handleException(error, 'getShows');
@@ -447,10 +355,10 @@ export class PlaywrightAdapter extends BaseAdapter {
 
       // Extract resources from page
       const resources = await page.evaluate(() => {
-        const elements = document.querySelectorAll('[class*="episode"], [class*="item"]');
+        const elements = document.querySelectorAll('[class*="episode"], [class*="item"], [class*="draft"], [class*="resource"]');
         const result: Resource[] = [];
 
-        elements.forEach((el, index) => {
+        elements.forEach((el: any, index) => {
           const titleEl = el.querySelector('[class*="title"], h2, h3');
           const statusEl = el.querySelector('[class*="status"], [class*="state"]');
           const timeEl = el.querySelector('[class*="duration"], [class*="time"]');
