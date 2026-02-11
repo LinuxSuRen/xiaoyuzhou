@@ -572,9 +572,9 @@ export class PlaywrightAdapter extends BaseAdapter {
 
         if (titleInput && titleInput.value) {
           const originalTitle = titleInput.value;
-          // Truncate to 60 characters if needed
+          // Truncate from the beginning if more than 60 characters (keep the last 60 chars)
           if (originalTitle.length > 60) {
-            titleInput.value = originalTitle.substring(0, 60);
+            titleInput.value = originalTitle.substring(originalTitle.length - 60);
             return { truncated: true, originalLength: originalTitle.length, newLength: 60 };
           }
           return { truncated: false, length: originalTitle.length };
