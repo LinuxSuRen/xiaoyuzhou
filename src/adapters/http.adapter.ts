@@ -15,7 +15,7 @@ import { Logger } from '../services/logger';
  */
 export class HttpAdapter extends BaseAdapter {
   private httpConfig: HttpConfig;
-  private readonly DEFAULT_BASE_URL = 'https://api.xiaoyuzhoufm.com';
+  private readonly DEFAULT_BASE_URL = 'https://podcaster.xiaoyuzhoufm.com';
   private readonly DEFAULT_RETRY_ATTEMPTS = 3;
   private readonly DEFAULT_RETRY_DELAY = 1000;
 
@@ -55,7 +55,7 @@ export class HttpAdapter extends BaseAdapter {
 
     try {
       // Simple health check - try to fetch a public endpoint
-      const response = await this.fetchWithTimeout('/', {
+      const response = await this.fetchWithTimeout('https://podcaster.xiaoyuzhoufm.com', {
         method: 'HEAD'
       });
 
@@ -287,7 +287,7 @@ export class HttpAdapter extends BaseAdapter {
 
       // Note: The actual API endpoint and response format may differ
       // This is a placeholder implementation
-      const response = await this.get<{ data?: Show[]; items?: Show[] }>('/podcasts');
+      const response = await this.get<{ data?: Show[]; items?: Show[] }>('/dashboard/podcasts');
 
       // Handle different response formats
       const shows = response.data || response.items || [];
@@ -317,7 +317,7 @@ export class HttpAdapter extends BaseAdapter {
 
       // Note: The actual API endpoint and response format may differ
       const response = await this.get<{ data?: Resource[]; items?: Resource[]; episodes?: Resource[] }>(
-        `/podcasts/${showId}/episodes`
+        `/dashboard/podcasts/${showId}/episodes`
       );
 
       // Handle different response formats
@@ -349,7 +349,7 @@ export class HttpAdapter extends BaseAdapter {
 
       // Note: The actual API endpoint and request format may differ
       const response = await this.post<{ success: boolean; url?: string }>(
-        `/episodes/${resourceId}/publish`,
+        `/dashboard/episodes/${resourceId}/publish`,
         {
           scheduledAt: options?.scheduledAt?.toISOString(),
           notify: options?.notify ?? true
@@ -387,7 +387,7 @@ export class HttpAdapter extends BaseAdapter {
       // Try batch publish endpoint first
       try {
         const response = await this.post<{ results: Array<{ id: string; success: boolean; url?: string }> }>(
-          '/episodes/batch-publish',
+          '/dashboard/episodes/batch-publish',
           {
             episodeIds: resourceIds,
             scheduledAt: options?.scheduledAt?.toISOString(),

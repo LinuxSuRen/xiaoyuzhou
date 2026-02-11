@@ -21,7 +21,7 @@ export class PlaywrightAdapter extends BaseAdapter {
   private page: Page | null = null;
   private playwrightConfig: PlaywrightConfig;
   private debugger?: Debugger;
-  private readonly BASE_URL = 'https://xiaoyuzhoufm.com';
+  private readonly BASE_URL = 'https://podcaster.xiaoyuzhoufm.com';
 
   constructor(config: PlaywrightConfig = {}) {
     super(config);
@@ -304,7 +304,7 @@ export class PlaywrightAdapter extends BaseAdapter {
       const page = await this.getPage();
 
       // Navigate to creator dashboard
-      await this.navigateTo('/podcasts');
+      await this.navigateTo('/dashboard');
 
       // Wait for shows to load
       await this.waitForSelector('[class*="podcast"], [class*="show"], [class*="episode"]', 10000);
@@ -363,7 +363,7 @@ export class PlaywrightAdapter extends BaseAdapter {
       const page = await this.getPage();
 
       // Navigate to show page
-      await this.navigateTo(`/podcasts/${showId}/episodes`);
+      await this.navigateTo(`/dashboard/podcasts/${showId}/episodes`);
 
       // Wait for episodes to load
       await this.waitForSelector('[class*="episode"], [class*="item"]', 10000);
