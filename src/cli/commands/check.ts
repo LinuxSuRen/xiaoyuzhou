@@ -212,7 +212,7 @@ export async function checkCommand(client: XiaoYuzhouClient, options: { showId?:
           ? resources.map(r => r.id)
           : await prompts.promptResourceSelection(resources);
 
-        await publishCommand(client, { resourceIds });
+        await publishCommand(client, { resourceIds, showId });
       }
     }
   }

@@ -111,6 +111,7 @@ export interface PublishOptions {
   scheduledAt?: Date;
   notify?: boolean;
   description?: string;
+  showId?: string;  // Show ID for the resource being published
 }
 
 // =====================================================

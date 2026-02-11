@@ -129,9 +129,15 @@ export async function publishCommand(
   // Publish resources
   const publishSpinner = ora(`正在发布 ${resourceIds.length} 个内容...`).start();
 
+  // Format resource IDs to include showId if available
+  const formattedResourceIds = targetShowId
+    ? resourceIds.map(id => id.includes(':') ? id : `${targetShowId}:${id}`)
+    : resourceIds;
+
   try {
-    const results = await client.publishResources(resourceIds, {
-      notify: options.notify ?? true
+    const results = await client.publishResources(formattedResourceIds, {
+      notify: options.notify ?? true,
+      showId: targetShowId
     });
 
     // Count successes and failures

@@ -435,39 +435,231 @@ export class PlaywrightAdapter extends BaseAdapter {
 
   /**
    * Publish a resource
+   * @param resourceId - Format: "showId:resourceIndex" or just resource ID
+   * @param options - Publishing options, can include showId
    */
   async publishResource(resourceId: string, options?: PublishOptions): Promise<AdapterResult<PublishResult>> {
     try {
-      this.logger.debug(`Publishing resource: ${resourceId}`, {
+      // Parse showId from resourceId if format is "showId:resourceIndex"
+      let showId: string;
+      let resourceIndex: string;
+
+      if (resourceId.includes(':')) {
+        [showId, resourceIndex] = resourceId.split(':');
+      } else if (options?.showId) {
+        showId = options.showId;
+        resourceIndex = resourceId;
+      } else {
+        return this.failure('Invalid resource ID format. Please provide showId:resourceIndex or include showId in options.');
+      }
+
+      this.logger.debug(`Publishing resource: ${resourceId} from show: ${showId}`, {
         module: 'playwright-adapter',
         action: 'publishResource',
-        resourceId
+        resourceId,
+        showId
       });
 
       const page = await this.getPage();
 
-      // Find and click publish button for the resource
-      const publishButton = await page.$(`[data-resource-id="${resourceId}"] [class*="publish"], button[class*="publish"]`);
+      // Step 1: Navigate to show homepage
+      this.logger.info(`Navigating to show homepage: ${showId}`, {
+        module: 'playwright-adapter',
+        action: 'publishResource'
+      });
+      await this.navigateTo(`/podcasts/${showId}/home`);
 
-      if (!publishButton) {
-        return this.failure('Publish button not found');
+      // Step 2: Click "资源库" (Resource Library)
+      this.logger.debug('Looking for 资源库 button', {
+        module: 'playwright-adapter',
+        action: 'publishResource'
+      });
+
+      // Wait for page to load and find the resource library button
+      await page.waitForTimeout(2000);
+
+      // Try multiple selectors for the resource library button
+      const resourceLibrarySelectors = [
+        'a:has-text("资源库")',
+        'button:has-text("资源库")',
+        '[class*="resource"]',
+        'a[href*="resource"]',
+        'a[href*="draft"]'
+      ];
+
+      let resourceLibraryButton = null;
+      for (const selector of resourceLibrarySelectors) {
+        try {
+          resourceLibraryButton = await page.$(selector);
+          if (resourceLibraryButton) {
+            this.logger.debug(`Found resource library button with selector: ${selector}`, {
+              module: 'playwright-adapter',
+              action: 'publishResource'
+            });
+            break;
+          }
+        } catch (e) {
+          // Selector not found, try next one
+        }
       }
 
-      await publishButton.click();
+      if (!resourceLibraryButton) {
+        // Try to find by text content using evaluate
+        const found = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('a, button'));
+          for (const btn of buttons) {
+            if (btn.textContent?.includes('资源库')) {
+              (btn as HTMLElement).click();
+              return true;
+            }
+          }
+          return false;
+        });
 
-      // Wait for confirmation dialog or success message
-      await page.waitForSelector('[class*="success"], [class*="published"], .success-message', { timeout: 10000 });
+        if (!found) {
+          return this.failure('Resource library button not found');
+        }
+      } else {
+        await resourceLibraryButton.click();
+      }
+
+      // Wait for resource library page to load
+      await page.waitForTimeout(3000);
+
+      // Step 3: Find and click "作为单集发布" for the target resource
+      this.logger.debug('Looking for "作为单集发布" button', {
+        module: 'playwright-adapter',
+        action: 'publishResource'
+      });
+
+      // Find the publish button by index or text
+      const publishFound = await page.evaluate((index) => {
+        // Look for buttons with text containing "作为单集发布" or "发布"
+        const buttons = Array.from(document.querySelectorAll('button, a'));
+        let publishCount = 0;
+
+        for (let i = 0; i < buttons.length; i++) {
+          const btn = buttons[i];
+          const text = btn.textContent || '';
+
+          if (text.includes('作为单集发布') || text.includes('发布')) {
+            if (publishCount === parseInt(index)) {
+              (btn as HTMLElement).click();
+              return true;
+            }
+            publishCount++;
+          }
+        }
+        return false;
+      }, resourceIndex);
+
+      if (!publishFound) {
+        return this.failure(`Publish button not found for resource index: ${resourceIndex}`);
+      }
+
+      // Wait for publish page to load
+      await page.waitForTimeout(3000);
+
+      // Step 4: On the publish page, modify title if needed (max 60 characters)
+      this.logger.debug('Processing publish page', {
+        module: 'playwright-adapter',
+        action: 'publishResource'
+      });
+
+      const titleProcessed = await page.evaluate(() => {
+        // Find title input
+        const titleInput = document.querySelector('input[name*="title"], textarea[name*="title"], [class*="title"] input, [class*="title"] textarea') as HTMLInputElement | HTMLTextAreaElement | null;
+
+        if (titleInput && titleInput.value) {
+          const originalTitle = titleInput.value;
+          // Truncate to 60 characters if needed
+          if (originalTitle.length > 60) {
+            titleInput.value = originalTitle.substring(0, 60);
+            return { truncated: true, originalLength: originalTitle.length, newLength: 60 };
+          }
+          return { truncated: false, length: originalTitle.length };
+        }
+        return { truncated: false, error: 'Title input not found' };
+      });
+
+      if (titleProcessed.error) {
+        this.logger.warn('Could not find title input', {
+          module: 'playwright-adapter',
+          action: 'publishResource'
+        });
+      } else if (titleProcessed.truncated) {
+        this.logger.info(`Title truncated from ${titleProcessed.originalLength} to ${titleProcessed.newLength} characters`, {
+          module: 'playwright-adapter',
+          action: 'publishResource'
+        });
+      }
+
+      // Step 5: Check "阅读并同意" (Read and agree)
+      this.logger.debug('Looking for agreement checkbox', {
+        module: 'playwright-adapter',
+        action: 'publishResource'
+      });
+
+      const agreementChecked = await page.evaluate(() => {
+        // Look for checkbox with text containing "阅读" or "同意"
+        const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+        for (const checkbox of checkboxes) {
+          const label = checkbox.parentElement?.textContent || '';
+          if (label.includes('阅读') || label.includes('同意')) {
+            if (!(checkbox as HTMLInputElement).checked) {
+              (checkbox as HTMLInputElement).click();
+            }
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (!agreementChecked) {
+        this.logger.warn('Agreement checkbox not found, trying to continue', {
+          module: 'playwright-adapter',
+          action: 'publishResource'
+        });
+      }
+
+      // Step 6: Click "创建" (Create) button
+      this.logger.debug('Clicking create button', {
+        module: 'playwright-adapter',
+        action: 'publishResource'
+      });
+
+      const createClicked = await page.evaluate(() => {
+        // Look for button with text containing "创建" or "发布"
+        const buttons = Array.from(document.querySelectorAll('button[type="submit"], button:not([type]), button[type="button"]'));
+        for (const btn of buttons) {
+          const text = btn.textContent || '';
+          if (text.includes('创建') || text.includes('发布')) {
+            (btn as HTMLElement).click();
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (!createClicked) {
+        return this.failure('Create/Publish button not found');
+      }
+
+      // Wait for navigation or success message
+      await page.waitForTimeout(5000);
 
       // Get published URL if available
       const publishedUrl = await page.evaluate(() => {
-        const linkEl = document.querySelector('[class*="success"] a[href*="episode"]');
+        // Try to find success message with link
+        const linkEl = document.querySelector('[class*="success"] a[href*="episode"], a[href*="/episodes/"]');
         return linkEl?.getAttribute('href') || undefined;
       });
 
       this.logger.info(`Resource published: ${resourceId}`, {
         module: 'playwright-adapter',
         action: 'publishResource',
-        resourceId
+        resourceId,
+        publishedUrl
       });
 
       return this.success({
