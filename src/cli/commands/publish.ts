@@ -14,7 +14,7 @@ import * as prompts from '../prompts/auth.prompts';
 
 export async function publishCommand(
   client: XiaoYuzhouClient,
-  options: { resourceIds?: string[]; showId?: string; all?: boolean; notify?: boolean }
+  options: { resourceIds?: string[]; showId?: string; showName?: string; all?: boolean; notify?: boolean }
 ): Promise<void> {
   console.log(chalk.cyan('\n  小宇宙创作者助手 - 发布内容\n'));
 
@@ -39,16 +39,50 @@ export async function publishCommand(
   }
 
   let resourceIds: string[];
+  let targetShowId: string | undefined;
+
+  // Resolve show ID from either --show-id or --show-name
+  if (options.showId) {
+    targetShowId = options.showId;
+  } else if (options.showName) {
+    // Need to find show by name - first get all shows
+    const spinner = ora('正在查找节目...').start();
+
+    try {
+      const allShows = await client.getShows();
+
+      const found = allShows.find(s => s.title === options.showName);
+
+      if (found) {
+        targetShowId = found.id;
+        spinner.succeed(chalk.green(`找到节目: ${found.title}`));
+      } else {
+        spinner.fail(chalk.red(`未找到名为 "${options.showName}" 的节目`));
+        console.log(chalk.dim('  可用节目:'));
+        allShows.forEach(show => {
+          console.log(chalk.dim(`    - ${show.title}`));
+        });
+        return;
+      }
+    } catch (error) {
+      spinner.fail(chalk.red('查找节目失败'));
+      await client.getErrorHandler().handle(error as Error, {
+        module: 'cli',
+        action: 'publish'
+      });
+      return;
+    }
+  }
 
   // Get resource IDs
   if (options.resourceIds && options.resourceIds.length > 0) {
     resourceIds = options.resourceIds;
-  } else if (options.showId) {
+  } else if (targetShowId) {
     // Get unpublished resources for the show
     const spinner = ora('获取未发布内容...').start();
 
     try {
-      const resources = await client.getUnpublishedResources(options.showId);
+      const resources = await client.getUnpublishedResources(targetShowId);
 
       if (resources.length === 0) {
         spinner.succeed(chalk.green('没有未发布的内容'));

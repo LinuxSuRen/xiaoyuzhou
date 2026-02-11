@@ -2,8 +2,8 @@
  * Check command implementation - Check for unpublished resources
  */
 
-import chalk from 'chalk';
 import ora, { Ora } from 'ora';
+import chalk from 'chalk';
 import { XiaoYuzhouClient } from '../../core/client';
 import { Show, Resource, ResourceStatus } from '../../core/types';
 import * as prompts from '../prompts/auth.prompts';
@@ -90,7 +90,7 @@ function displayUnpublishedResources(resources: Resource[]): void {
 // Check Command
 // =====================================================
 
-export async function checkCommand(client: XiaoYuzhouClient, options: { showId?: string; json?: boolean }): Promise<void> {
+export async function checkCommand(client: XiaoYuzhouClient, options: { showId?: string; showName?: string; json?: boolean }): Promise<void> {
   console.log(chalk.cyan('\n  小宇宙创作者助手 - 检查未发布内容\n'));
 
   // Ensure authenticated
@@ -145,6 +145,31 @@ export async function checkCommand(client: XiaoYuzhouClient, options: { showId?:
     // Find show by ID
     selectedShow = shows.find(s => s.id === options.showId) || shows[0];
     showId = selectedShow.id;
+  } else if (options.showName) {
+    // Find show by name
+    const found = shows.find(s => s.title === options.showName);
+    if (found) {
+      showId = found.id;
+      selectedShow = found;
+    } else {
+      console.log(chalk.yellow(`  ⚠ 未找到名为 "${options.showName}" 的节目`));
+      const searchMethod = await prompts.promptShowSelectionMethod();
+
+      if (searchMethod === 'list') {
+        showId = await prompts.promptShowSelection(shows);
+        selectedShow = shows.find(s => s.id === showId)!;
+      } else {
+        const showName = await prompts.promptShowName(shows);
+        const found = shows.find(s => s.title === showName);
+        if (found) {
+          showId = found.id;
+          selectedShow = found;
+        } else {
+          console.log(chalk.red('  ✗ 未找到匹配的节目\n'));
+          return;
+        }
+      }
+    }
   } else {
     showId = await prompts.promptShowSelection(shows);
     selectedShow = shows.find(s => s.id === showId)!;

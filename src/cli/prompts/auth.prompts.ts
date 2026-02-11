@@ -25,6 +25,14 @@ export interface ShowSelectionAnswer {
   showId: string;
 }
 
+export interface ShowNameAnswer {
+  showName: string;
+}
+
+export interface ShowSelectionMethodAnswer {
+  method: 'list' | 'manual';
+}
+
 export interface ResourceSelectionAnswer {
   resourceIds: string[];
 }
@@ -126,6 +134,46 @@ export async function promptShowSelection(shows: Array<{ id: string; title: stri
   ]);
 
   return showId;
+}
+
+/**
+ * Prompt user to select show selection method
+ */
+export async function promptShowSelectionMethod(): Promise<'list' | 'manual'> {
+  const { method } = await inquirer.prompt<ShowSelectionMethodAnswer>([
+    {
+      type: 'list',
+      name: 'method',
+      message: '请选择节目输入方式:',
+      choices: [
+        { name: '从列表中选择', value: 'list', short: '列表选择' },
+        { name: '手动输入节目名称', value: 'manual', short: '手动输入' }
+      ]
+    }
+  ]);
+
+  return method;
+}
+
+/**
+ * Prompt user to manually enter show name
+ */
+export async function promptShowName(shows: Array<{ id: string; title: string }>): Promise<string> {
+  const choices = shows.map(show => ({
+    name: show.title,
+    value: show.title
+  }));
+
+  const result = await inquirer.prompt<{ showName: string }>([
+    {
+      type: 'list',
+      name: 'showName',
+      message: '请输入节目名称:',
+      choices
+    }
+  ]);
+
+  return result.showName;
 }
 
 /**

@@ -132,6 +132,7 @@ export function createCLI(): Command {
     .command('check')
     .description('检查未发布的内容')
     .option('-s, --show-id <showId>', '指定节目ID')
+    .option('-n, --show-name <showName>', '指定节目名称')
     .option('-j, --json', '以JSON格式输出')
     .action(async (options) => {
       if (!options.debug) {
@@ -154,6 +155,7 @@ export function createCLI(): Command {
       return [...previous, value];
     })
     .option('-s, --show-id <showId>', '指定节目ID')
+    .option('-n, --show-name <showName>', '指定节目名称')
     .option('-a, --all', '发布所有未发布内容')
     .option('--no-notify', '不通知订阅者')
     .action(async (options) => {

@@ -440,10 +440,10 @@ export class PlaywrightAdapter extends BaseAdapter {
       const page = await this.getPage();
 
       // Navigate to show page
-      await this.navigateTo(`/dashboard/podcasts/${showId}/episodes`);
+      await this.navigateTo(`/podcasts/${showId}/home`);
 
-      // Wait for episodes to load
-      await this.waitForSelector('[class*="episode"], [class*="item"]', 10000);
+      // Wait for episodes/resources to load on show page
+      await this.waitForSelector('[class*="episode"], [class*="item"], [class*="draft"], [class*="resource"]', 10000);
 
       // Extract resources from page
       const resources = await page.evaluate(() => {
