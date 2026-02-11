@@ -176,6 +176,22 @@ export class PlaywrightAdapter extends BaseAdapter {
   // =====================================================
 
   /**
+   * Navigate to a path
+   */
+  private async navigateTo(path: string): Promise<void> {
+    const page = await this.getPage();
+    await page.goto(`${this.BASE_URL}${path}`, { waitUntil: 'networkidle', timeout: this.timeout });
+  }
+
+  /**
+   * Wait for a selector to appear
+   */
+  private async waitForSelector(selector: string, timeout?: number): Promise<void> {
+    const page = await this.getPage();
+    await page.waitForSelector(selector, { timeout: timeout || this.timeout });
+  }
+
+  /**
    * Get user shows
    */
   async getShows(): Promise<AdapterResult<Show[]>> {
@@ -222,7 +238,7 @@ export class PlaywrightAdapter extends BaseAdapter {
       const maxScrollAttempts = 5;
 
       for (let scrollAttempt = 0; scrollAttempt < maxScrollAttempts; scrollAttempt++) {
-        // Get current show elements from the page
+        // Get current show elements from page
         const currentShows = await page.evaluate(() => {
           const result: Array<{ id: string; title: string; description: string; episodeCount: number; createdAt: string; updatedAt: string }> = [];
 
@@ -232,7 +248,7 @@ export class PlaywrightAdapter extends BaseAdapter {
           console.log(`Found ${elements.length} potential show elements`);
 
           if (elements.length > 0) {
-            elements.forEach((el: any, index) => {
+            elements.forEach((el: any, index: number) => {
               // Try to find title - try many selectors
               const titleSelectors = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', '[class*="title"]', '[class*="name"]', '[class*="header"]', 'strong'];
               let titleEl = null;
@@ -271,11 +287,11 @@ export class PlaywrightAdapter extends BaseAdapter {
                 }
               }
 
-              // Only add if we found a valid ID (link exists and ID was extracted)
-              if (titleEl?.textContent && id) {
+              // Prioritize links ending with /home (show homepage) over /episodes
+              if (href.includes('/home')) {
                 result.push({
                   id: id,
-                  title: titleEl.textContent.trim(),
+                  title: titleEl?.textContent?.trim() || el.textContent?.trim() || '',
                   description: descEl?.textContent?.trim().substring(0, 200) || '',
                   episodeCount: 0,
                   createdAt: new Date().toISOString(),
@@ -288,8 +304,15 @@ export class PlaywrightAdapter extends BaseAdapter {
           return result;
         });
 
+        // Add new shows to accumulated list (avoiding duplicates)
+        for (const show of currentShows) {
+          if (!shows.some(s => s.id === show.id)) {
+            shows.push(show);
+          }
+        }
+
         // Check if we got new items
-        if (currentShows.length === lastCount) {
+        if (shows.length === lastCount) {
           noNewItemsCount++;
 
           if (noNewItemsCount >= 2) {
@@ -299,35 +322,34 @@ export class PlaywrightAdapter extends BaseAdapter {
             });
             break; // No more items likely loaded
           }
-
-          // Scroll down to load more content
-          const scrollHeight = await page.evaluate(() => window.innerHeight);
-          await page.evaluate((height: number) => window.scrollBy(0, height));
-
-          // Wait for content to load after scrolling
-          await page.waitForTimeout(1500);
-
-          lastCount = currentShows.length;
-        }
-
-        // Merge all unique shows by ID
-        const uniqueShows = shows.filter((show, index, self) =>
-          index === shows.findIndex(s => s.id === show.id)
-        );
-
-        if (uniqueShows.length === 0) {
-          this.logger.warn('No shows found on dashboard', {
-            module: 'playwright-adapter',
-            action: 'getShows'
-          });
         } else {
-          this.logger.info(`Found ${uniqueShows.length} shows`, {
-            module: 'playwright-adapter',
-            action: 'getShows'
-          });
+          noNewItemsCount = 0;
         }
 
-        return this.success(uniqueShows);
+        // Scroll down to load more content
+        const scrollHeight = await page.evaluate(() => window.innerHeight);
+        await page.evaluate((height: number) => window.scrollBy(0, height), scrollHeight);
+
+        // Wait for content to load after scrolling
+        await page.waitForTimeout(1500);
+
+        lastCount = shows.length;
+      }
+
+      // Log final results
+      if (shows.length === 0) {
+        this.logger.warn('No shows found on dashboard', {
+          module: 'playwright-adapter',
+          action: 'getShows'
+        });
+      } else {
+        this.logger.info(`Found ${shows.length} shows`, {
+          module: 'playwright-adapter',
+          action: 'getShows'
+        });
+      }
+
+      return this.success(shows);
 
     } catch (error) {
       return this.handleException(error, 'getShows');

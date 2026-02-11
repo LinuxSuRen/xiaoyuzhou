@@ -2,7 +2,7 @@
   "name": "xiaoyuzhou",
   "version": "1.0.0",
   "description": "小宇宙创作者平台自动化工具 - 帮助播客创作者管理内容发布流程",
-  "main": "dist/index.js",
+  "main": "dist/cli.js",
   "bin": {
     "xiaoyuzhou": "./dist/cli.js"
   },
@@ -22,25 +22,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "playwright": "^1.48.0",
-    "commander": "^12.1.0",
-    "inquirer": "^12.0.0",
-    "chalk": "^5.3.0",
-    "ora": "^8.1.0",
-    "figlet": "^1.8.0",
-    "dotenv": "^16.4.0",
-    "winston": "^3.15.0",
-    "date-fns": "^4.1.0",
-    "express": "^4.18.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.6.0",
-    "tsx": "^4.19.0",
-    "@types/node": "^22.0.0",
-    "@types/inquirer": "^9.0.0",
-    "@types/figlet": "^1.5.0",
-    "@types/express": "^4.17.0",
-    "eslint": "^9.0.0",
-    "prettier": "^3.3.0"
+    "playwright": "^1.48.0"
   }
 }
